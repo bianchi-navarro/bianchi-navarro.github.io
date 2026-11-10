@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A Windows forensics lab using the SOFTWARE and SYSTEM registry hives to identify a host, compare installation timestamps, and resolve its selected control set.">
+  <title>Profiling a Windows Host with Registry Explorer | Bianchi Navarro</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="wrap header"><a class="brand" href="../../index.html"><span class="brand-mark" aria-hidden="true">BN_</span> Bianchi Navarro</a><nav aria-label="Lab navigation"><a href="../../index.html#projects">← Labs &amp; projects</a></nav></header>
+  <main class="wrap lab-page" id="main" tabindex="-1">
+    <header class="case-header lab-header">
+      <p class="eyebrow">DFIR / LAB 01 / WINDOWS FORENSICS</p>
+      <h1>Profiling a Windows Host with Registry Explorer</h1>
+      <p class="intro">I examined the <code>SOFTWARE</code> and <code>SYSTEM</code> hives from a lab VM to identify the Windows release, compare its recorded installation times, and recover the configured computer name. The first result needed a second look: the product name and the build number pointed to different Windows generations.</p>
+      <p class="muted">Windows 11 lab VM · Registry Explorer 2026.5.0</p>
+      <nav class="case-outline" aria-label="Report contents"><a href="#version">Windows version</a><a href="#timestamps">Installation timestamps</a><a href="#control-set">Control set</a><a href="#follow-up">Follow-up</a></nav>
+    </header>
+    <div class="case-body lab-body">
+      <section id="version" aria-labelledby="version-title">
+        <h2 id="version-title">Identifying Windows when the fields disagree</h2>
+        <p>I opened <code>SOFTWARE</code> from <code>C:\Windows\System32\config</code> and navigated to <code>Microsoft\Windows NT\CurrentVersion</code>. The <code>ProductName</code> value read <code>Windows 10 Home</code>, but <code>DisplayVersion</code> was <code>25H2</code> and both <code>CurrentBuild</code> and <code>CurrentBuildNumber</code> were <code>26200</code>.</p>
+        <div class="lab-figures">
+          <figure><img src="evidence/product-name.webp" width="421" height="192" alt="Registry Explorer shows ProductName as Windows 10 Home in CurrentVersion."><figcaption>Figure 1. The <code>ProductName</code> value recorded in <code>SOFTWARE</code>.</figcaption></figure>
+          <figure><img src="evidence/version-build.webp" width="421" height="174" alt="Registry Explorer shows build 26200 in CurrentBuild and CurrentBuildNumber and 25H2 in DisplayVersion."><figcaption>Figure 2. The build and display version from the same key.</figcaption></figure>
+        </div>
+        <p><a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information">Microsoft’s release table</a> associates build <code>26200</code> with Windows 11 25H2. That matches the display version and the lab environment. I kept the conflicting product name in my notes and treated the edition as unconfirmed. The distinction matters in triage: the build is a better starting point for deciding which Windows artifacts to expect than a single product label.</p>
+      </section>
+      <section id="timestamps" aria-labelledby="time-title">
+        <h2 id="time-title">Comparing two installation timestamps</h2>
+        <p>In the same key, I used the Data Interpreter to read <code>InstallDate</code> as Unix time and <code>InstallTime</code> as <a href="https://learn.microsoft.com/en-us/windows/win32/sysinfo/file-times">Windows FILETIME</a>. Unix time here is stored in whole seconds. FILETIME counts 100-nanosecond intervals from January 1, 1601 UTC. The raw values are therefore different even when they refer to the same second.</p>
+        <dl class="lab-readings">
+          <div><dt><code>InstallDate</code> · <code>REG_DWORD</code></dt><dd><code>1789577186</code><br><time datetime="2026-09-16T16:46:26Z">September 16, 2026, 16:46:26 UTC</time></dd></div>
+          <div><dt><code>InstallTime</code> · <code>REG_QWORD</code></dt><dd><code>134340507866270156</code><br><time datetime="2026-09-16T16:46:26.6270156Z">September 16, 2026, 16:46:26.6270156 UTC</time></dd></div>
+        </dl>
+        <div class="lab-figures">
+          <figure><img src="evidence/install-date.webp" width="516" height="119" loading="lazy" alt="Data Interpreter displays September 16, 2026 at 16:46:26 in the Unix/POSIX row."><figcaption>Figure 3. Unix/POSIX interpretation for <code>InstallDate</code>.</figcaption></figure>
+          <figure><img src="evidence/install-time.webp" width="517" height="119" loading="lazy" alt="Data Interpreter displays September 16, 2026 at 16:46:26 in the Windows FILETIME row."><figcaption>Figure 4. FILETIME interpretation for <code>InstallTime</code>; the tool’s display shows whole seconds.</figcaption></figure>
+        </div>
+        <p>The two fields agree at the precision of <code>InstallDate</code>. The fractional digits above come from decoding the raw FILETIME value. The 1958 date in Figure 4 is what the same bytes look like under the wrong interpretation; it is not a second installation date. This is a useful reference for the timeline, but both values come from the same hive. Their agreement does not establish the device’s first use or the integrity of the hive.</p>
+      </section>
+      <section id="control-set" aria-labelledby="control-title">
+        <h2 id="control-title">Resolving the control set before reading the hostname</h2>
+        <p>Before looking up the computer name, I opened <code>Select</code> in the <code>SYSTEM</code> hive. <code>Current</code> was <code>1</code>, which directed me to <code>ControlSet001</code>. The same key showed <code>Default = 1</code>, <code>LastKnownGood = 1</code>, and <code>Failed = 0</code>.</p>
+        <p>From there I followed <code>ControlSet001\Control\ComputerName\ComputerName</code> and read the <code>ComputerName</code> value. That is the name recorded in the selected configuration at the time represented by the hive. Checking <code>Select\Current</code> first avoids accidentally reporting a name from another control set.</p>
+        <div class="lab-figures">
+          <figure><img src="evidence/control-set.webp" width="344" height="134" loading="lazy" alt="The Select key shows Current, Default, and LastKnownGood equal to 1 and Failed equal to 0."><figcaption>Figure 5. <code>Select\Current</code> identifies <code>ControlSet001</code>.</figcaption></figure>
+          <figure><img src="evidence/computer-name.webp" width="422" height="92" loading="lazy" alt="The ComputerName value in the selected control set, with the lab hostname redacted."><figcaption>Figure 6. The configured computer name. The lab hostname is withheld in the public capture.</figcaption></figure>
+        </div>
+      </section>
+      <section id="follow-up" aria-labelledby="follow-title">
+        <h2 id="follow-title">What I would corroborate next</h2>
+        <p>I came away with a working host profile: evidence consistent with Windows 11 25H2, a recorded installation timestamp, and a computer name tied to the selected control set. These are leads I can use to associate later artifacts with the correct VM. To build a defensible timeline in a real case, I would preserve and hash the acquired hives and relevant transaction logs, then compare the setup timestamp with setup logs and the hostname with the computer field in relevant Windows events. I did not perform those checks in this exercise.</p>
+        <p class="small-note">Evidence shown here is cropped from my original Registry Explorer screenshots. The public files omit the product identifiers and the VM hostname. Registry hives are not included.</p>
+        <a class="profile-link" href="https://github.com/bianchi-navarro/bianchi-navarro.github.io/tree/main/labs/windows-registry-profiling">View lab files on GitHub <span aria-hidden="true">↗</span></a>
+      </section>
+    </div>
+  </main>
+  <footer class="wrap footer"><a href="../../index.html#projects">← Labs &amp; projects</a><span>Bianchi Navarro / DFIR</span></footer>
+</body>
+</html>
