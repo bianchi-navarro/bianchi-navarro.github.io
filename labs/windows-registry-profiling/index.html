@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A Windows forensics lab using the SOFTWARE and SYSTEM registry hives to identify a host, compare installation timestamps, and resolve its selected control set.">
+  <meta name="description" content="A Windows forensics lab on validating the OS build, installation timestamps, and configured computer name before building an incident timeline.">
   <title>Profiling a Windows Host with Registry Explorer | Bianchi Navarro</title>
   <link rel="stylesheet" href="../../assets/styles.css">
 </head>
@@ -14,46 +14,62 @@
     <header class="case-header lab-header">
       <p class="eyebrow">DFIR / LAB 01 / WINDOWS FORENSICS</p>
       <h1>Profiling a Windows Host with Registry Explorer</h1>
-      <p class="intro">I examined the <code>SOFTWARE</code> and <code>SYSTEM</code> hives from a lab VM to identify the Windows release, compare its recorded installation times, and recover the configured computer name. The first result needed a second look: the product name and the build number pointed to different Windows generations.</p>
+      <p class="intro">Before building an incident timeline, the examiner needs to know which Windows installation the evidence describes and which computer name it records. This lab uses the <code>SOFTWARE</code> and <code>SYSTEM</code> hives from a Windows VM to establish that baseline and show where it needs corroboration.</p>
       <p class="muted">Windows 11 lab VM · Registry Explorer 2026.5.0</p>
-      <nav class="case-outline" aria-label="Report contents"><a href="#version">Windows version</a><a href="#timestamps">Installation timestamps</a><a href="#control-set">Control set</a><a href="#follow-up">Follow-up</a></nav>
+      <nav class="case-outline" aria-label="Report contents"><a href="#source">1. Source</a><a href="#version">2. Windows version</a><a href="#timestamps">3. Installation times</a><a href="#control-set">4. Computer name</a><a href="#follow-up">Application to a case</a></nav>
     </header>
     <div class="case-body lab-body">
-      <section id="version" aria-labelledby="version-title">
-        <h2 id="version-title">Identifying Windows when the fields disagree</h2>
-        <p>I opened <code>SOFTWARE</code> from <code>C:\Windows\System32\config</code> and navigated to <code>Microsoft\Windows NT\CurrentVersion</code>. The <code>ProductName</code> value read <code>Windows 10 Home</code>, but <code>DisplayVersion</code> was <code>25H2</code> and both <code>CurrentBuild</code> and <code>CurrentBuildNumber</code> were <code>26200</code>.</p>
+      <section id="source" aria-labelledby="source-title">
+        <h2 id="source-title">1. Locate the registry hives</h2>
+        <p>A disk image may arrive with little context beyond an evidence label. Reading the registry gives the examiner a way to check what the image itself contains before attributing events to a device. It also helps narrow the search to artifacts relevant to the Windows build and the period under investigation.</p>
+        <p>In this lab the source was a Windows VM. The hives were located under <code>C:\Windows\System32\config</code>. The examination started with <code>SOFTWARE</code> for the version and installation values, then moved to <code>SYSTEM</code> for the configured computer name.</p>
         <div class="lab-figures">
-          <figure><img src="evidence/product-name.webp" width="421" height="192" alt="Registry Explorer shows ProductName as Windows 10 Home in CurrentVersion."><figcaption>Figure 1. The <code>ProductName</code> value recorded in <code>SOFTWARE</code>.</figcaption></figure>
-          <figure><img src="evidence/version-build.webp" width="421" height="174" alt="Registry Explorer shows build 26200 in CurrentBuild and CurrentBuildNumber and 25H2 in DisplayVersion."><figcaption>Figure 2. The build and display version from the same key.</figcaption></figure>
+          <figure><a href="evidence/hive-location.webp" aria-label="Open figure 1 at full size"><img src="evidence/hive-location.webp" width="1365" height="593" alt="Registry Explorer’s open dialog at Windows System32 config, with SOFTWARE selected and SYSTEM directly below it."></a><figcaption>Figure 1. Both hives in the Windows <code>System32\config</code> directory. Select a screenshot to open it at full size.</figcaption></figure>
         </div>
-        <p><a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information">Microsoft’s release table</a> associates build <code>26200</code> with Windows 11 25H2. That matches the display version and the lab environment. I kept the conflicting product name in my notes and treated the edition as unconfirmed. The distinction matters in triage: the build is a better starting point for deciding which Windows artifacts to expect than a single product label.</p>
+      </section>
+      <section id="version" aria-labelledby="version-title">
+        <h2 id="version-title">2. Validate the Windows release</h2>
+        <p>Under <code>SOFTWARE\Microsoft\Windows NT\CurrentVersion</code>, <code>ProductName</code> read <code>Windows 10 Home</code> and <code>ReleaseId</code> read <code>2009</code>. The same key recorded <code>25H2</code> in <code>DisplayVersion</code> and <code>26200</code> in both <code>CurrentBuild</code> and <code>CurrentBuildNumber</code>.</p>
+        <div class="lab-figures">
+          <figure><a href="evidence/product-name.webp" aria-label="Open figure 2 at full size"><img src="evidence/product-name.webp" width="1362" height="595" loading="lazy" alt="Registry Explorer with CurrentVersion selected in the SOFTWARE hive and ProductName and ReleaseId visible in the values panel."></a><figcaption>Figure 2. <code>ProductName</code> and <code>ReleaseId</code> in <code>CurrentVersion</code>.</figcaption></figure>
+          <figure><a href="evidence/version-build.webp" aria-label="Open figure 3 at full size"><img src="evidence/version-build.webp" width="1362" height="593" loading="lazy" alt="Registry Explorer shows CurrentBuild and CurrentBuildNumber at 26200 and DisplayVersion at 25H2, with the CurrentVersion path visible."></a><figcaption>Figure 3. Build <code>26200</code> and display version <code>25H2</code> in the same key.</figcaption></figure>
+        </div>
+        <p><a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information">Microsoft’s release table</a> maps build <code>26200</code> to Windows 11 25H2. That is consistent with <code>DisplayVersion</code> and the lab environment. The conflicting strings remain part of the record; the edition was not independently confirmed. In triage, using the build to guide artifact selection avoids sending the examination down the wrong path based on a product label alone.</p>
       </section>
       <section id="timestamps" aria-labelledby="time-title">
-        <h2 id="time-title">Comparing two installation timestamps</h2>
-        <p>In the same key, I used the Data Interpreter to read <code>InstallDate</code> as Unix time and <code>InstallTime</code> as <a href="https://learn.microsoft.com/en-us/windows/win32/sysinfo/file-times">Windows FILETIME</a>. Unix time here is stored in whole seconds. FILETIME counts 100-nanosecond intervals from January 1, 1601 UTC. The raw values are therefore different even when they refer to the same second.</p>
+        <h2 id="time-title">3. Decode and compare the installation timestamps</h2>
+        <p>With the Windows release established, the next step was to interpret the two installation values in the same key. Registry Explorer’s Data Interpreter was used to read <code>InstallDate</code> as Unix time and <code>InstallTime</code> as <a href="https://learn.microsoft.com/en-us/windows/win32/sysinfo/file-times">Windows FILETIME</a>. The first stores whole seconds; the second counts 100-nanosecond intervals from January 1, 1601 UTC. The decoded times are compared in UTC at the precision shared by both fields.</p>
         <dl class="lab-readings">
           <div><dt><code>InstallDate</code> · <code>REG_DWORD</code></dt><dd><code>1789577186</code><br><time datetime="2026-09-16T16:46:26Z">September 16, 2026, 16:46:26 UTC</time></dd></div>
           <div><dt><code>InstallTime</code> · <code>REG_QWORD</code></dt><dd><code>134340507866270156</code><br><time datetime="2026-09-16T16:46:26.6270156Z">September 16, 2026, 16:46:26.6270156 UTC</time></dd></div>
         </dl>
         <div class="lab-figures">
-          <figure><img src="evidence/install-date.webp" width="516" height="119" loading="lazy" alt="Data Interpreter displays September 16, 2026 at 16:46:26 in the Unix/POSIX row."><figcaption>Figure 3. Unix/POSIX interpretation for <code>InstallDate</code>.</figcaption></figure>
-          <figure><img src="evidence/install-time.webp" width="517" height="119" loading="lazy" alt="Data Interpreter displays September 16, 2026 at 16:46:26 in the Windows FILETIME row."><figcaption>Figure 4. FILETIME interpretation for <code>InstallTime</code>; the tool’s display shows whole seconds.</figcaption></figure>
+          <figure><a href="evidence/install-date.webp" aria-label="Open figure 4 at full size"><img src="evidence/install-date.webp" width="1152" height="580" loading="lazy" alt="The InstallDate row is selected on the right and the Data Interpreter shows September 16, 2026 at 16:46:26 in the Unix/POSIX row on the left."></a><figcaption>Figure 4. The selected <code>InstallDate</code> value and its Unix/POSIX interpretation.</figcaption></figure>
+          <figure><a href="evidence/install-time.webp" aria-label="Open figure 5 at full size"><img src="evidence/install-time.webp" width="1166" height="584" loading="lazy" alt="The InstallTime row is selected on the right and the Data Interpreter shows September 16, 2026 at 16:46:26 in the Windows FILETIME row on the left."></a><figcaption>Figure 5. The selected <code>InstallTime</code> value and its FILETIME interpretation. The tool displays whole seconds.</figcaption></figure>
         </div>
-        <p>The two fields agree at the precision of <code>InstallDate</code>. The fractional digits above come from decoding the raw FILETIME value. The 1958 date in Figure 4 is what the same bytes look like under the wrong interpretation; it is not a second installation date. This is a useful reference for the timeline, but both values come from the same hive. Their agreement does not establish the device’s first use or the integrity of the hive.</p>
+        <p>Both values resolve to September 16, 2026 at 16:46:26 UTC at whole-second precision. The fractional digits above come from the raw FILETIME value. The 1958 date in Figure 5 appears because the tool also displays those bytes as Unix time, which is the wrong interpretation for this field. The agreement is an internal consistency check. Both values come from the same hive, so their match provides a lead for the timeline without independently establishing when the device was first used.</p>
       </section>
       <section id="control-set" aria-labelledby="control-title">
-        <h2 id="control-title">Resolving the control set before reading the hostname</h2>
-        <p>Before looking up the computer name, I opened <code>Select</code> in the <code>SYSTEM</code> hive. <code>Current</code> was <code>1</code>, which directed me to <code>ControlSet001</code>. The same key showed <code>Default = 1</code>, <code>LastKnownGood = 1</code>, and <code>Failed = 0</code>.</p>
-        <p>From there I followed <code>ControlSet001\Control\ComputerName\ComputerName</code> and read the <code>ComputerName</code> value. That is the name recorded in the selected configuration at the time represented by the hive. Checking <code>Select\Current</code> first avoids accidentally reporting a name from another control set.</p>
+        <h2 id="control-title">4. Resolve the control set, then read the computer name</h2>
+        <p>Before reading the computer name, check <code>SYSTEM\Select\Current</code>. The value was <code>1</code> in this lab, which identifies <code>ControlSet001</code> as the selected set in the examined hive. The same key showed <code>Default = 1</code>, <code>LastKnownGood = 1</code>, and <code>Failed = 0</code>. On a different image, the current set may have another number.</p>
         <div class="lab-figures">
-          <figure><img src="evidence/control-set.webp" width="344" height="134" loading="lazy" alt="The Select key shows Current, Default, and LastKnownGood equal to 1 and Failed equal to 0."><figcaption>Figure 5. <code>Select\Current</code> identifies <code>ControlSet001</code>.</figcaption></figure>
-          <figure><img src="evidence/computer-name.webp" width="422" height="92" loading="lazy" alt="The ComputerName value in the selected control set, with the lab hostname redacted."><figcaption>Figure 6. The configured computer name. The lab hostname is withheld in the public capture.</figcaption></figure>
+          <figure><a href="evidence/control-set.webp" aria-label="Open figure 6 at full size"><img src="evidence/control-set.webp" width="1359" height="594" loading="lazy" alt="Registry Explorer shows the Select key in SYSTEM and the Current value of 1."></a><figcaption>Figure 6. <code>Select\Current</code> identifies <code>ControlSet001</code>.</figcaption></figure>
+        </div>
+        <p>Only after resolving the set was the <code>ComputerName</code> value read from <code>SYSTEM\ControlSet001\Control\ComputerName\ComputerName</code>. This is the configured name recorded in the selected set. It provides a search term for logs and endpoint telemetry, but the name alone does not uniquely identify a device or establish what it was called at an earlier date.</p>
+        <div class="lab-figures">
+          <figure><a href="evidence/computer-name.webp" aria-label="Open figure 7 at full size"><img src="evidence/computer-name.webp" width="1184" height="595" loading="lazy" alt="Registry Explorer shows the full ControlSet001 computer name path and the ComputerName value, with its data redacted."></a><figcaption>Figure 7. The path in the selected control set. The lab computer name is withheld.</figcaption></figure>
         </div>
       </section>
       <section id="follow-up" aria-labelledby="follow-title">
-        <h2 id="follow-title">What I would corroborate next</h2>
-        <p>I came away with a working host profile: evidence consistent with Windows 11 25H2, a recorded installation timestamp, and a computer name tied to the selected control set. These are leads I can use to associate later artifacts with the correct VM. To build a defensible timeline in a real case, I would preserve and hash the acquired hives and relevant transaction logs, then compare the setup timestamp with setup logs and the hostname with the computer field in relevant Windows events. I did not perform those checks in this exercise.</p>
-        <p class="small-note">Evidence shown here is cropped from my original Registry Explorer screenshots. The public files omit the product identifiers and the VM hostname. Registry hives are not included.</p>
+        <h2 id="follow-title">How the profile informs a forensic investigation</h2>
+        <p>The lab established three points: the build supports Windows 11 25H2, the two installation values agree to the second, and the configured computer name comes from the control set selected in <code>SYSTEM</code>. In incident response, those findings help decide which logs to collect and how to correlate them. In a forensic examination, recording the source image and its hash, the hive and key paths, the raw values, and the time conversions gives another examiner a way to reproduce the findings.</p>
+        <h3>If the name does not match the evidence label</h3>
+        <p>A renamed machine and a mislabeled image call for different decisions. Compare the configured name with the <a href="https://learn.microsoft.com/en-us/windows/win32/wes/eventschema-computer-systempropertiestype-element"><code>Computer</code> field in Windows events</a> from the period in question. Where available, compare both names with acquisition records and an independent device identifier from inventory or endpoint telemetry. This helps avoid combining events from different systems or splitting one system’s activity across two names.</p>
+        <h3>If the recorded installation appears newer than the activity</h3>
+        <p>An upgrade or reinstall would be a line of inquiry. <a href="https://learn.microsoft.com/en-us/windows/deployment/upgrade/log-files">Windows Setup logs</a>, such as <code>setupact.log</code> where available, can help reconstruct what happened. Backups and centrally collected telemetry may retain activity from before the recorded installation, so that timestamp should not be used as the earliest possible date of the investigation.</p>
+        <h3>If the timestamps disagree</h3>
+        <p>Check the raw values, format, UTC conversion, and precision before treating the difference as an anomaly. If it remains, verify that the hives came from the intended image or snapshot, then compare the dates with setup or recovery records. A discrepancy can justify further investigation; it does not establish tampering by itself.</p>
+        <p class="small-note">These scenarios were not tested in the lab. Public screenshots retain the application context, with product identifiers and the lab computer name masked where they appear. No registry hives are published.</p>
         <a class="profile-link" href="https://github.com/bianchi-navarro/bianchi-navarro.github.io/tree/main/labs/windows-registry-profiling">View lab files on GitHub <span aria-hidden="true">↗</span></a>
       </section>
     </div>

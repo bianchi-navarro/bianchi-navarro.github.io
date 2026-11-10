@@ -18,10 +18,14 @@
 .lab-page{max-width:62rem}
 .lab-header,.lab-body{max-width:none}
 .lab-body section>p{max-width:75ch}
+.lab-body section>p+p{margin-top:.75rem}
+.lab-body section>h3{font-size:.95rem;margin:1.2rem 0 .35rem}
 .lab-page code{font-family:var(--mono);color:var(--accent);font-size:.92em;overflow-wrap:anywhere}
 .lab-figures,.lab-readings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1.3rem 0}
+.lab-figures{grid-template-columns:minmax(0,1fr)}
 .lab-figures figure,.lab-readings>div{min-width:0;margin:0;padding:.85rem;border:1px solid var(--line);background:var(--surface)}
-.lab-figures img{display:block;max-width:100%;height:auto}
+.lab-figures a{display:block;cursor:zoom-in}
+.lab-figures img{display:block;width:100%;height:auto}
 .lab-figures figcaption,.lab-readings{font-size:.75rem;color:var(--muted)}
 .lab-figures figcaption{margin-top:.6rem;line-height:1.55}
 .lab-readings dd{margin:.4rem 0 0}
